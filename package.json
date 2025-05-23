@@ -1,0 +1,10 @@
+{
+  "name": "realtime-chat-app",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix client\" \"npm run server --prefix server\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
