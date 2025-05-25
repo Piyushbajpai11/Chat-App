@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 const app = express();
 const server = http.createServer(app);
 const users = new Map();
+const connectedUsers = new Map();
 
 const io = new Server(server, {
     cors: {
@@ -20,6 +21,7 @@ io.on("connection", (socket) => {
     console.log("🟢 New client connected:", socket.id);
 
     socket.on("join_chat", (username) => {
+        connectedUsers.set(username, socket.id);
         users.set(socket.id, username);
         socket.username = username;
 
@@ -29,15 +31,23 @@ io.on("connection", (socket) => {
             time: new Date().toLocaleTimeString()
         });
 
-        io.emit("online_users", Array.from(users.values()));
+        io.emit("online_users", Array.from(connectedUsers.keys()));
     });
+
+    socket.on('private-message', ({ to, from, message }) => {
+        const targetSocketId = connectedUsers.get(to);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('private-message', { from, message }); // ✅ Fixed
+        }
+    });
+
 
     socket.on("send_message", (data) => {
         console.log("📨 Message received:", data);
         io.emit("receive_message", data);
     });
 
-    // ✅ Updated: use explicit username from client
+    //use explicit username from client
     socket.on("typing", (username) => {
         socket.broadcast.emit("user_typing", username);
     });
@@ -47,18 +57,24 @@ io.on("connection", (socket) => {
     });
 
     socket.on("disconnecting", () => {
-        const username = users.get(socket.id);
-        users.delete(socket.id);
+        const username = users.get(socket.id); // socket.id -> username
 
-        socket.broadcast.emit("receive_message", {
-            user: "System",
-            text: `👤 ${username || "A user"} has left the chat.`,
-            time: new Date().toLocaleTimeString()
-        });
+        if (username) {
+            connectedUsers.delete(username);
+            users.delete(socket.id);
 
-        io.emit("online_users", Array.from(users.values()));
+            socket.broadcast.emit("receive_message", {
+                user: "System",
+                text: `👤 ${username} has left the chat.`,
+                time: new Date().toLocaleTimeString()
+            });
+
+            io.emit("online_users", Array.from(connectedUsers.keys())); // send updated usernames
+        }
+
         console.log("🔴 Client disconnected:", socket.id);
     });
+
 
     socket.on("disconnect", () => {
         console.log("🔴 Client disconnected:", socket.id);
